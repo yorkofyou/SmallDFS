@@ -9,10 +9,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"net"
 	"net/http"
+	"net/rpc"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -51,7 +55,50 @@ func (master *Master) Init() {
 	}
 	master.Node.LastEdit = time.Now().Unix()
 	master.Redundance = 2
+	master.MapFinished = make([]bool, ClientNum)
 	master.GetClients()
+	master.server()
+}
+
+func (m *Master) ReadyForReduce(Id int, ready *bool) error {
+	m.MapFinished[Id-1] = true
+	for i := 0; i < ClientNum; i++ {
+		if m.MapFinished[i] == false {
+			*ready = false
+			return nil
+		}
+	}
+	*ready = true
+	return nil
+}
+
+func (m *Master) AskForFiles(Id int, Files *[]string) error {
+	filename := "tb_call_201202_random.txt"
+	filename = strings.Split(filename, ".")[0]
+	file := m.Node.Namespace[filename]
+	if file.Info == "" {
+		err := errors.New("no such file or directory")
+		return err
+	}
+	for i := 0; i < file.Size/SplitUnit; i++ {
+		if file.Chunks[i].Replicas[0].Location == "http://localhost:1109"+strconv.Itoa(Id) {
+			*Files = append(*Files, "chunk-"+strconv.Itoa(file.Chunks[i].Replicas[0].ReplicaNum))
+		}
+	}
+	return nil
+}
+
+func (m *Master) server() {
+	rpc.Register(m)
+	rpc.HandleHTTP()
+	//l, e := net.Listen("tcp", ":1234")
+	sockname := masterSock()
+	os.Remove(sockname)
+	l, e := net.Listen("unix", sockname)
+	if e != nil {
+		log.Fatal("listen error:", e)
+	}
+	go http.Serve(l, nil)
 }
 
 func (master *Master) GetClients() {
@@ -96,7 +143,9 @@ func (master *Master) Run() {
 		}
 		f.Offset = offset
 		f.Size = offset + chunkLen*SplitUnit
+		master.mu.Lock()
 		master.Node.Namespace[filename] = f
+		master.mu.Unlock()
 		fmt.Printf("File %s generated: %d chunks with last chunk offset %d\n", filename, chunkLen, offset)
 		fmt.Println("File info: ", master.Node.Namespace[filename].Info)
 		err = os.Remove(master.Node.Directory + "/" + file)
@@ -116,9 +165,7 @@ func (master *Master) Run() {
 		filename = strings.Split(filename, ".")[0]
 		file := master.Node.Namespace[filename]
 		if file.Info == "" {
-			err := errors.New("no such file or directory")
-			c.AbortWithError(404, err)
-			return
+			c.String(http.StatusBadRequest, "no such file or directory")
 		}
 		for i := 0; i < file.Size/SplitUnit; i++ {
 			master.GetChunk(file, filename, i)
@@ -318,4 +365,23 @@ func (master *Master) DelChunk(file File, filename string, num int) {
 		}
 		fmt.Println("Delete chunk-", num, "replica-", i, ": ", string(delRes))
 	}
+}
+
+func (master *Master) DoTask(Id int) {
+	if Id < 1 || Id > 3 {
+		return
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < ClientNum; i++ {
+		wg.Add(1)
+		url := master.Clients[i].Node.Location + "/work/" + strconv.Itoa(Id)
+		go func() {
+			response, err := http.Get(url)
+			if err != nil {
+				fmt.Println("Master send request error", err.Error())
+			}
+			defer response.Body.Close()
+		}()
+	}
+	wg.Wait()
 }

@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -130,6 +133,21 @@ func (client *Client) Run(num int) {
 		c.String(http.StatusOK, string(data))
 	})
 
+	router.GET("/work/:id", func(c *gin.Context) {
+		fmt.Println("Client start working")
+		id, _ := strconv.Atoi(c.Param("id"))
+		files := []string{}
+		if len(client.Files) == 0 {
+			call("Master.AskForFiles", client.Id, &files)
+		}
+		client.Files = files
+		if id < 1 || id > 3 {
+			return
+		}
+		client.Work(id)
+		c.String(http.StatusOK, "Client finish work")
+	})
+
 	router.GET("/getmeta", func(c *gin.Context) {
 		c.JSON(http.StatusOK, client)
 	})
@@ -217,4 +235,101 @@ func (client *Client) DeleteFile(filename string) {
 		return
 	}
 	fmt.Print("Master response: ", string(bytes))
+}
+
+func (client *Client) Work(id int) {
+	var kva ByKey
+	intermediate := ByKey{}
+	var ready bool
+	for _, filename := range client.Files {
+		// filename := strconv.FormatInt(Id, 10) + ".txt"
+		file, err := os.Open(client.Node.Directory + "/" + filename)
+		defer file.Close()
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+			return
+		}
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", filename)
+			return
+		}
+		if id == 1 {
+			kva = Map(client.Node.Directory+"/"+filename, string(content), id, 0)
+		} else if id == 2 {
+			kva = Map(client.Node.Directory+"/"+filename, string(content), id, 1)
+		} else if id == 3 {
+			kva = Map(client.Node.Directory+"/"+filename, string(content), id, 1)
+		}
+		intermediate = append(intermediate, kva...)
+	}
+	if len(intermediate) != 0 {
+		sort.Sort(ByKey(intermediate))
+		tasks := make([][]KeyValue, ClientNum)
+		for _, kv := range intermediate {
+			taskNo := ihash(kv.Key) % ClientNum
+			tasks[taskNo] = append(tasks[taskNo], kv)
+		}
+		for idx, task := range tasks {
+			fname := "mr-" + strconv.FormatInt(client.Id, 10) + "-" + strconv.Itoa(idx+1) + ".txt"
+			file, err := os.Create(client.Node.Directory + "/" + fname)
+			if err != nil {
+				log.Fatal("error :%v", err)
+			}
+			enc := json.NewEncoder(file)
+			for _, kv := range task {
+				err := enc.Encode(&kv)
+				if err != nil {
+					log.Fatalf("error :%v", err)
+				}
+			}
+			file.Close()
+			client.PutFile(fname)
+		}
+	}
+	fmt.Println("Map finished")
+	for ready == false {
+		call("Master.ReadyForReduce", client.Id, &ready)
+		time.Sleep(1000)
+	}
+	kva = []KeyValue{}
+	for mId := 1; mId < 5; mId++ {
+		filename := "mr-" + strconv.Itoa(mId) + "-" + strconv.FormatInt(client.Id, 10) + ".txt"
+		client.GetFile(filename)
+		if _, err := os.Stat(client.Node.Directory + "/" + filename); os.IsNotExist(err) {
+			continue
+		}
+		file, err := os.Open(client.Node.Directory + "/" + filename)
+		if err != nil {
+			log.Fatalf("cannot read file")
+		}
+		dec := json.NewDecoder(file)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+				break
+			}
+			kva = append(kva, kv)
+		}
+		file.Close()
+	}
+	sort.Sort(ByKey(kva))
+	oname := "mr-out-" + strconv.FormatInt(client.Id, 10) + ".txt"
+	ofile, _ := os.Create(client.Node.Directory + "/" + oname)
+	i := 0
+	for i < len(kva) {
+		j := i + 1
+		for j < len(kva) && kva[j].Key == kva[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, kva[k].Value)
+		}
+		output := Reduce(kva[i].Key, values)
+		fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
+		i = j
+	}
+	ofile.Close()
+	fmt.Println("Reduce finished")
 }

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 func main() {
@@ -13,8 +14,10 @@ func main() {
 	putFlag := flag.String("put", "unknown", "input file name")
 	getFlag := flag.String("get", "unknown", "input file name")
 	deleteFlag := flag.String("delete", "unknown", "input file name")
+	taskFlag := flag.Int("task", 0, "the number of tasks")
 	flag.Parse()
 	var client dfs.Client
+	var master dfs.Master
 	if *numFlag != 0 {
 		if *numFlag == 1 {
 			response, err := http.Get("http://localhost:11091" + "/getmeta")
@@ -69,5 +72,18 @@ func main() {
 	if *deleteFlag != "unknown" {
 		fmt.Println("Request delete file " + *deleteFlag)
 		client.DeleteFile(*deleteFlag)
+	}
+	if *taskFlag != 0 {
+		fmt.Println("Do task " + strconv.Itoa(*taskFlag))
+		response, err := http.Get("http://localhost:11090" + "/getmeta")
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		defer response.Body.Close()
+		err = json.NewDecoder(response.Body).Decode(&master)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		master.DoTask(*taskFlag)
 	}
 }
