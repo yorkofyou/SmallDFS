@@ -133,18 +133,25 @@ func (client *Client) Run(num int) {
 		c.String(http.StatusOK, string(data))
 	})
 
-	router.GET("/work/:id", func(c *gin.Context) {
+	router.GET("/work", func(c *gin.Context) {
 		fmt.Println("Client start working")
-		id, _ := strconv.Atoi(c.Param("id"))
+		id, _ := strconv.Atoi(c.Query("id"))
+		option, _ := strconv.Atoi(c.Query("option"))
 		files := []string{}
 		if len(client.Files) == 0 {
 			call("Master.AskForFiles", client.Id, &files)
+			client.Files = files
 		}
-		client.Files = files
 		if id < 1 || id > 3 {
 			return
 		}
-		client.Work(id)
+		if id == 1 {
+			client.Work(id, 0)
+		} else if id == 2 {
+			client.Work(id, option)
+		} else if id == 3 {
+			client.Work(id, option)
+		}
 		c.String(http.StatusOK, "Client finish work")
 	})
 
@@ -183,12 +190,13 @@ func (client *Client) PutFile(path string) {
 		return
 	}
 	defer result.Body.Close()
-	content, err := ioutil.ReadAll(result.Body)
+	_, err = ioutil.ReadAll(result.Body)
+	// content, err := ioutil.ReadAll(result.Body)
 	if err != nil {
 		fmt.Println("Client post error", err.Error())
 		return
 	}
-	fmt.Println("Response: ", string(content))
+	// fmt.Println("Response: ", string(content))
 }
 
 func (client *Client) GetFile(filename string) {
@@ -237,12 +245,12 @@ func (client *Client) DeleteFile(filename string) {
 	fmt.Print("Master response: ", string(bytes))
 }
 
-func (client *Client) Work(id int) {
+func (client *Client) Work(id int, option int) {
 	var kva ByKey
 	intermediate := ByKey{}
 	var ready bool
+	call("Master.ReadyForReduce", client.Id, &ready)
 	for _, filename := range client.Files {
-		// filename := strconv.FormatInt(Id, 10) + ".txt"
 		file, err := os.Open(client.Node.Directory + "/" + filename)
 		defer file.Close()
 		if err != nil {
@@ -257,9 +265,9 @@ func (client *Client) Work(id int) {
 		if id == 1 {
 			kva = Map(client.Node.Directory+"/"+filename, string(content), id, 0)
 		} else if id == 2 {
-			kva = Map(client.Node.Directory+"/"+filename, string(content), id, 1)
+			kva = Map(client.Node.Directory+"/"+filename, string(content), id, option)
 		} else if id == 3 {
-			kva = Map(client.Node.Directory+"/"+filename, string(content), id, 1)
+			kva = Map(client.Node.Directory+"/"+filename, string(content), id, option)
 		}
 		intermediate = append(intermediate, kva...)
 	}
@@ -271,7 +279,7 @@ func (client *Client) Work(id int) {
 			tasks[taskNo] = append(tasks[taskNo], kv)
 		}
 		for idx, task := range tasks {
-			fname := "mr-" + strconv.FormatInt(client.Id, 10) + "-" + strconv.Itoa(idx+1) + ".txt"
+			fname := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-" + strconv.FormatInt(client.Id, 10) + "-" + strconv.Itoa(idx+1) + ".txt"
 			file, err := os.Create(client.Node.Directory + "/" + fname)
 			if err != nil {
 				log.Fatal("error :%v", err)
@@ -288,20 +296,25 @@ func (client *Client) Work(id int) {
 		}
 	}
 	fmt.Println("Map finished")
+	ready = false
 	for ready == false {
-		call("Master.ReadyForReduce", client.Id, &ready)
+		fmt.Println("Wait for reduce")
+		call("Master.MapFinish", client.Id, &ready)
 		time.Sleep(1000)
 	}
+	fmt.Println("Start to reduce")
 	kva = []KeyValue{}
 	for mId := 1; mId < 5; mId++ {
-		filename := "mr-" + strconv.Itoa(mId) + "-" + strconv.FormatInt(client.Id, 10) + ".txt"
-		client.GetFile(filename)
+		filename := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-" + strconv.Itoa(mId) + "-" + strconv.FormatInt(client.Id, 10) + ".txt"
+		if int64(mId) != client.Id {
+			client.GetFile(filename)
+		}
 		if _, err := os.Stat(client.Node.Directory + "/" + filename); os.IsNotExist(err) {
 			continue
 		}
 		file, err := os.Open(client.Node.Directory + "/" + filename)
 		if err != nil {
-			log.Fatalf("cannot read file")
+			continue
 		}
 		dec := json.NewDecoder(file)
 		for {
@@ -314,7 +327,7 @@ func (client *Client) Work(id int) {
 		file.Close()
 	}
 	sort.Sort(ByKey(kva))
-	oname := "mr-out-" + strconv.FormatInt(client.Id, 10) + ".txt"
+	oname := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-out-" + strconv.FormatInt(client.Id, 10) + ".txt"
 	ofile, _ := os.Create(client.Node.Directory + "/" + oname)
 	i := 0
 	for i < len(kva) {
@@ -331,5 +344,11 @@ func (client *Client) Work(id int) {
 		i = j
 	}
 	ofile.Close()
+	client.PutFile(oname)
 	fmt.Println("Reduce finished")
+	ready = false
+	for ready == false {
+		call("Master.ReduceFinish", client.Id, &ready)
+		time.Sleep(1000)
+	}
 }

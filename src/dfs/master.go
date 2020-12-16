@@ -56,19 +56,46 @@ func (master *Master) Init() {
 	master.Node.LastEdit = time.Now().Unix()
 	master.Redundance = 2
 	master.MapFinished = make([]bool, ClientNum)
+	master.ReduceFinished = make([]bool, ClientNum)
 	master.GetClients()
 	master.server()
 }
 
-func (m *Master) ReadyForReduce(Id int, ready *bool) error {
+func (m *Master) ReadyForReduce(Id int, _ *bool) error {
+	m.MapAlready = false
+	m.ReduceAlready = false
+	m.MapFinished[Id-1] = false
+	m.ReduceFinished[Id-1] = false
+	return nil
+}
+
+func (m *Master) MapFinish(Id int, ready *bool) error {
+	if m.MapAlready == true {
+		*ready = true
+		return nil
+	}
 	m.MapFinished[Id-1] = true
 	for i := 0; i < ClientNum; i++ {
 		if m.MapFinished[i] == false {
-			*ready = false
 			return nil
 		}
 	}
-	*ready = true
+	m.MapAlready = true
+	return nil
+}
+
+func (m *Master) ReduceFinish(Id int, ready *bool) error {
+	if m.ReduceAlready == true {
+		*ready = true
+		return nil
+	}
+	m.ReduceFinished[Id-1] = true
+	for i := 0; i < ClientNum; i++ {
+		if m.MapFinished[i] == false {
+			return nil
+		}
+	}
+	m.ReduceAlready = true
 	return nil
 }
 
@@ -147,7 +174,7 @@ func (master *Master) Run() {
 		master.Node.Namespace[filename] = f
 		master.mu.Unlock()
 		fmt.Printf("File %s generated: %d chunks with last chunk offset %d\n", filename, chunkLen, offset)
-		fmt.Println("File info: ", master.Node.Namespace[filename].Info)
+		fmt.Println("File info: ", f.Info)
 		err = os.Remove(master.Node.Directory + "/" + file)
 		if err != nil {
 			fmt.Println("Master error when removing temporary files", err.Error())
@@ -163,9 +190,11 @@ func (master *Master) Run() {
 	router.GET("/get/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")
 		filename = strings.Split(filename, ".")[0]
+		master.mu.Lock()
 		file := master.Node.Namespace[filename]
+		master.mu.Unlock()
 		if file.Info == "" {
-			c.String(http.StatusBadRequest, "no such file or directory")
+			c.String(404, "no such file or directory")
 		}
 		for i := 0; i < file.Size/SplitUnit; i++ {
 			master.GetChunk(file, filename, i)
@@ -372,16 +401,66 @@ func (master *Master) DoTask(Id int) {
 		return
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < ClientNum; i++ {
-		wg.Add(1)
-		url := master.Clients[i].Node.Location + "/work/" + strconv.Itoa(Id)
-		go func() {
-			response, err := http.Get(url)
-			if err != nil {
-				fmt.Println("Master send request error", err.Error())
+	if Id == 1 {
+		master.MapAlready = false
+		master.ReduceAlready = false
+		for i := 0; i < ClientNum; i++ {
+			wg.Add(1)
+			url := master.Clients[i].Node.Location + "/work?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(0)
+			go sendRequest(url, &wg)
+		}
+		wg.Wait()
+		for i := 0; i < ClientNum; i++ {
+			master.MapFinished[i] = false
+			master.ReduceFinished[i] = false
+		}
+		fmt.Println("Clients finish tasks")
+	} else if Id == 2 {
+		for i := 1; i <= 3; i++ {
+			master.MapAlready = false
+			master.ReduceAlready = false
+			for j := 0; j < ClientNum; j++ {
+				wg.Add(1)
+				url := master.Clients[j].Node.Location + "/work?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(i)
+				go sendRequest(url, &wg)
 			}
-			defer response.Body.Close()
-		}()
+			wg.Wait()
+			for i := 0; i < ClientNum; i++ {
+				master.MapFinished[i] = false
+				master.ReduceFinished[i] = false
+			}
+			fmt.Println("Clients finish tasks")
+		}
+	} else if Id == 3 {
+		for i := 1; i <= 8; i++ {
+			master.MapAlready = false
+			master.ReduceAlready = false
+			for j := 0; j < ClientNum; j++ {
+				wg.Add(1)
+				url := master.Clients[j].Node.Location + "/work?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(i)
+				go sendRequest(url, &wg)
+			}
+			wg.Wait()
+			for i := 0; i < ClientNum; i++ {
+				master.MapFinished[i] = false
+				master.ReduceFinished[i] = false
+			}
+			fmt.Println("Clients finish tasks")
+		}
 	}
-	wg.Wait()
+}
+
+func sendRequest(url string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	response, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Master send request error", err.Error())
+	}
+	defer response.Body.Close()
+	content, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		fmt.Println("Client post error", err.Error())
+		return
+	}
+	fmt.Println("Response: ", string(content))
 }

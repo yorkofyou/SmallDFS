@@ -180,7 +180,7 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 					continue
 				}
 				if t == option {
-					kv := KeyValue{number[3], "1"}
+					kv := KeyValue{number[4], "1"}
 					kva = append(kva, kv)
 				}
 			}

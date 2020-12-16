@@ -6,7 +6,7 @@ import (
 )
 
 const ClientNum int = 4
-const SplitUnit int = 100000
+const SplitUnit int = 1048576
 const Redundance int = 2
 const ChunkNum int = 100000
 
@@ -27,11 +27,14 @@ type ReplicaLocation struct {
 	ReplicaNum int
 }
 type Master struct {
-	mu          sync.Mutex
-	Node        Node
-	Clients     []Client
-	Redundance  int
-	MapFinished []bool
+	mu             sync.Mutex
+	Node           Node
+	Clients        []Client
+	Redundance     int
+	MapAlready     bool
+	ReduceAlready  bool
+	MapFinished    []bool
+	ReduceFinished []bool
 }
 type Client struct {
 	Id             int64
