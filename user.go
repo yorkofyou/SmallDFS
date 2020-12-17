@@ -74,7 +74,7 @@ func main() {
 		client.DeleteFile(*deleteFlag)
 	}
 	if *taskFlag != 0 {
-		fmt.Println("Do task " + strconv.Itoa(*taskFlag))
+		fmt.Println("Request do task " + strconv.Itoa(*taskFlag))
 		response, err := http.Get("http://localhost:11090" + "/getmeta")
 		if err != nil {
 			fmt.Println(err.Error())

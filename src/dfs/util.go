@@ -68,7 +68,7 @@ func moveFile(sourcePath, destPath string) error {
 	return nil
 }
 
-func putChunk(path string, chunkNum int, replicaLocationList []ReplicaLocation) {
+func PutChunk(path string, chunkNum int, replicaLocationList []ReplicaLocation) {
 	for i := 0; i < Redundance; i++ {
 		fmt.Printf("Put Chunk %d to DFS Client %s at Replica %d.\n", chunkNum, replicaLocationList[i].Location, replicaLocationList[i].ReplicaNum)
 		buffer := new(bytes.Buffer)
@@ -194,7 +194,7 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 					continue
 				}
 				if startHour >= (option-1)*3 && startHour < option*3 {
-					kv := KeyValue{number[1], "1"}
+					kv := KeyValue{number[1], number[11]}
 					kva = append(kva, kv)
 				}
 			}
@@ -208,7 +208,15 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 // map tasks, with a list of all the values created for that key by
 // any map task.
 //
-func Reduce(key string, values []string) string {
+func Reduce(key string, values []string, id int) string {
 	// return the number of occurrences of this word.
+	if id == 3 {
+		sum := 0
+		for i := 0; i < len(values); i++ {
+			v, _ := strconv.Atoi(values[i])
+			sum += v
+		}
+		return strconv.Itoa(sum)
+	}
 	return strconv.Itoa(len(values))
 }

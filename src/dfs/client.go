@@ -1,6 +1,7 @@
 package dfs
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -152,7 +153,59 @@ func (client *Client) Run(num int) {
 		} else if id == 3 {
 			client.Work(id, option)
 		}
-		c.String(http.StatusOK, "Client finish work")
+		c.String(http.StatusOK, "Client "+strconv.FormatInt(client.Id, 10)+" finish task "+strconv.Itoa(id))
+	})
+
+	router.GET("/task", func(c *gin.Context) {
+		id, _ := strconv.Atoi(c.Query("id"))
+		option, _ := strconv.Atoi(c.Query("option"))
+		output := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + ".txt"
+		ofile, _ := os.Create(client.Node.Directory + "/" + output)
+		kva := ByKey{}
+		if id == 1 {
+			for i := 1; i <= ClientNum; i++ {
+				filename := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-out-" + strconv.Itoa(i) + ".txt"
+				if int64(i) != client.Id {
+					client.GetFile(filename)
+				}
+				file, _ := os.Open(client.Node.Directory + "/" + filename)
+				var err error
+				var kv KeyValue
+				for err == nil {
+					_, err = fmt.Fscanf(file, "%v %v\n", &kv.Key, &kv.Value)
+					kva = append(kva, kv)
+				}
+			}
+			for i := 0; i < len(kva); i++ {
+				num, _ := strconv.ParseFloat(kva[i].Value, 32)
+				fmt.Fprintf(ofile, "<%v, %v>\n", kva[i].Key, fmt.Sprintf("%f", num/29))
+			}
+		} else if id == 2 {
+			sum := 0
+			for i := 1; i <= ClientNum; i++ {
+				filename := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-out-" + strconv.Itoa(i) + ".txt"
+				if int64(i) != client.Id {
+					client.GetFile(filename)
+				}
+				file, _ := os.Open(client.Node.Directory + "/" + filename)
+				var kv KeyValue
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					scanner.Text()
+					fmt.Sscanf(scanner.Text(), "%v %v", &kv.Key, &kv.Value)
+					v, _ := strconv.Atoi(kv.Value)
+					sum += v
+					kva = append(kva, kv)
+				}
+			}
+			for i := 0; i < len(kva); i++ {
+				num, _ := strconv.ParseFloat(kva[i].Value, 32)
+				fmt.Fprintf(ofile, "<%v, %v>\n", kva[i].Key, fmt.Sprintf("%f", num/float64(sum)))
+			}
+		} else if id == 3 {
+
+		}
+		c.String(http.StatusOK, "Client has merged")
 	})
 
 	router.GET("/getmeta", func(c *gin.Context) {
@@ -339,7 +392,7 @@ func (client *Client) Work(id int, option int) {
 		for k := i; k < j; k++ {
 			values = append(values, kva[k].Value)
 		}
-		output := Reduce(kva[i].Key, values)
+		output := Reduce(kva[i].Key, values, id)
 		fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
 		i = j
 	}

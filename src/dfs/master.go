@@ -166,7 +166,7 @@ func (master *Master) Run() {
 		for i := 0; i < chunkLen; i++ {
 			replicaLocationList := master.Allocate()
 			f.Chunks[i].Replicas = replicaLocationList
-			putChunk(master.Node.Directory+"/"+filename+"/chunk-"+strconv.Itoa(i), i, replicaLocationList)
+			PutChunk(master.Node.Directory+"/"+filename+"/chunk-"+strconv.Itoa(i), i, replicaLocationList)
 		}
 		f.Offset = offset
 		f.Size = offset + chunkLen*SplitUnit
@@ -414,7 +414,19 @@ func (master *Master) DoTask(Id int) {
 			master.MapFinished[i] = false
 			master.ReduceFinished[i] = false
 		}
-		fmt.Println("Clients finish tasks")
+		url := master.Clients[0].Node.Location + "/task?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(0)
+		response, err := http.Get(url)
+		if err != nil {
+			fmt.Println("Master send request error", err.Error())
+		}
+		defer response.Body.Close()
+		content, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			fmt.Println("Client post error", err.Error())
+			return
+		}
+		fmt.Println("Response: ", string(content))
+		fmt.Println("Clients finish task" + strconv.Itoa(Id))
 	} else if Id == 2 {
 		for i := 1; i <= 3; i++ {
 			master.MapAlready = false
@@ -425,12 +437,24 @@ func (master *Master) DoTask(Id int) {
 				go sendRequest(url, &wg)
 			}
 			wg.Wait()
-			for i := 0; i < ClientNum; i++ {
-				master.MapFinished[i] = false
-				master.ReduceFinished[i] = false
+			for j := 0; j < ClientNum; j++ {
+				master.MapFinished[j] = false
+				master.ReduceFinished[j] = false
 			}
-			fmt.Println("Clients finish tasks")
+			url := master.Clients[0].Node.Location + "/task?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(i)
+			response, err := http.Get(url)
+			if err != nil {
+				fmt.Println("Master send request error", err.Error())
+			}
+			defer response.Body.Close()
+			content, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				fmt.Println("Client post error", err.Error())
+				return
+			}
+			fmt.Println("Response: ", string(content))
 		}
+		fmt.Println("Clients finish task" + strconv.Itoa(Id))
 	} else if Id == 3 {
 		for i := 1; i <= 8; i++ {
 			master.MapAlready = false
@@ -445,8 +469,20 @@ func (master *Master) DoTask(Id int) {
 				master.MapFinished[i] = false
 				master.ReduceFinished[i] = false
 			}
-			fmt.Println("Clients finish tasks")
+			url := master.Clients[0].Node.Location + "/task?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(i)
+			response, err := http.Get(url)
+			if err != nil {
+				fmt.Println("Master send request error", err.Error())
+			}
+			defer response.Body.Close()
+			content, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				fmt.Println("Client post error", err.Error())
+				return
+			}
+			fmt.Println("Response: ", string(content))
 		}
+		fmt.Println("Clients finish task" + strconv.Itoa(Id))
 	}
 }
 
