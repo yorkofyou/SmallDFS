@@ -107,7 +107,7 @@ func (m *Master) AskForFiles(Id int, Files *[]string) error {
 		err := errors.New("no such file or directory")
 		return err
 	}
-	for i := 0; i < file.Size/SplitUnit; i++ {
+	for i := 0; i < len(file.Chunks); i++ {
 		if file.Chunks[i].Replicas[0].Location == "http://localhost:1109"+strconv.Itoa(Id) {
 			*Files = append(*Files, "chunk-"+strconv.Itoa(file.Chunks[i].Replicas[0].ReplicaNum))
 		}
@@ -161,15 +161,16 @@ func (master *Master) Run() {
 				fmt.Println("Master error when making directory", err.Error())
 			}
 		}
-		chunkLen, offset := store(master.Node.Directory+"/"+file, master.Node.Directory+"/"+filename+"/chunk-")
+		chunkLen, offset, size := store(master.Node.Directory+"/"+file, master.Node.Directory+"/"+filename+"/chunk-")
 		f := File{Info: "{name:" + filename + "}"}
+		f.Chunks = make([]Chunk, chunkLen)
 		for i := 0; i < chunkLen; i++ {
 			replicaLocationList := master.Allocate()
 			f.Chunks[i].Replicas = replicaLocationList
 			PutChunk(master.Node.Directory+"/"+filename+"/chunk-"+strconv.Itoa(i), i, replicaLocationList)
 		}
 		f.Offset = offset
-		f.Size = offset + chunkLen*SplitUnit
+		f.Size = size
 		master.mu.Lock()
 		master.Node.Namespace[filename] = f
 		master.mu.Unlock()
@@ -196,7 +197,7 @@ func (master *Master) Run() {
 		if file.Info == "" {
 			c.String(404, "no such file or directory")
 		}
-		for i := 0; i < file.Size/SplitUnit; i++ {
+		for i := 0; i < len(file.Chunks); i++ {
 			master.GetChunk(file, filename, i)
 		}
 		data := master.Merge(file, filename)
@@ -206,7 +207,7 @@ func (master *Master) Run() {
 	router.DELETE("/delete/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")
 		file := master.Node.Namespace[filename]
-		for i := 0; i < file.Size/SplitUnit; i++ {
+		for i := 0; i < len(file.Chunks); i++ {
 			master.DelChunk(file, filename, i)
 		}
 		c.String(http.StatusOK, "Delete "+filename+"success\n")
@@ -319,8 +320,8 @@ func (master *Master) Allocate() (replicas []ReplicaLocation) {
 }
 
 func (master *Master) Merge(file File, filename string) []byte {
-	fileData := make([][]byte, file.Size/SplitUnit)
-	for i := 0; i < file.Size/SplitUnit; i++ {
+	fileData := make([][]byte, len(file.Chunks))
+	for i := 0; i < len(file.Chunks); i++ {
 		d := readByBytes(master.Node.Directory + "/" + filename + "/chunk-" + strconv.Itoa(i))
 		fileData[i] = make([]byte, SplitUnit)
 		fileData[i] = d

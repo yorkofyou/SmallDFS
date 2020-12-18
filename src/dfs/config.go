@@ -8,14 +8,13 @@ import (
 const ClientNum int = 4
 const SplitUnit int = 1048576
 const Redundance int = 2
-const ChunkNum int = 100000
 
 type ChunkUnit []byte
 type Namespace map[string]File
 type File struct {
 	Info   string
 	Size   int
-	Chunks [ChunkNum]Chunk
+	Chunks []Chunk
 	Offset int
 }
 type Chunk struct {

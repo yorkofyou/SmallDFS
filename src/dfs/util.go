@@ -1,6 +1,7 @@
 package dfs
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -38,15 +39,39 @@ func write(filename string, data []byte) {
 	}
 }
 
-func store(filename string, path string) (chunkLen int, offset int) {
-	data := readByBytes(filename)
-	i := 0
-	for i < len(data)/SplitUnit {
-		write(path+strconv.Itoa(i), data[i*SplitUnit:(i+1)*SplitUnit])
-		i++
+func store(filename string, path string) (chunkLen int, offset int, fileSize int) {
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Println("Open file error", err.Error())
 	}
-	write(path+strconv.Itoa(i), data[i*SplitUnit:len(data)])
-	return i + 1, len(data) - i*SplitUnit
+	var fileLen int
+	scanner := bufio.NewScanner(file)
+	flag := true
+	i := 0
+	size := 0
+	for flag == true {
+		var data []byte
+		fileLen = 0
+		for fileLen < SplitUnit {
+			if scanner.Scan() == false {
+				flag = false
+				break
+			}
+			bytes := scanner.Bytes()
+			newLine := []byte("\n")
+			bytes = append(bytes, newLine...)
+			fileLen += len(bytes)
+			data = append(data, bytes...)
+
+		}
+		write(path+strconv.Itoa(i), data)
+		size += fileLen
+		i++
+		if flag == false {
+			break
+		}
+	}
+	return i, fileLen, size
 }
 
 func moveFile(sourcePath, destPath string) error {

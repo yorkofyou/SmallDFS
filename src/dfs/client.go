@@ -171,9 +171,14 @@ func (client *Client) Run(num int) {
 				file, _ := os.Open(client.Node.Directory + "/" + filename)
 				var err error
 				var kv KeyValue
+				var k, v string
 				for err == nil {
-					_, err = fmt.Fscanf(file, "%v %v\n", &kv.Key, &kv.Value)
-					kva = append(kva, kv)
+					_, err = fmt.Fscanf(file, "%v %v\n", &k, &v)
+					if err == nil {
+						kv.Key = k
+						kv.Value = v
+						kva = append(kva, kv)
+					}
 				}
 			}
 			for i := 0; i < len(kva); i++ {
