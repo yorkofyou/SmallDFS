@@ -169,21 +169,21 @@ func (client *Client) Run(num int) {
 					client.GetFile(filename)
 				}
 				file, _ := os.Open(client.Node.Directory + "/" + filename)
-				var err error
 				var kv KeyValue
-				var k, v string
-				for err == nil {
-					_, err = fmt.Fscanf(file, "%v %v\n", &k, &v)
-					if err == nil {
-						kv.Key = k
-						kv.Value = v
-						kva = append(kva, kv)
-					}
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					scanner.Text()
+					s := make([]string, 2)
+					fmt.Sscanf(scanner.Text(), "%v %v %v", &kv.Key, &s[0], &s[1])
+					kv.Value = strings.Join(s[:], " ")
+					kva = append(kva, kv)
 				}
 			}
 			for i := 0; i < len(kva); i++ {
-				num, _ := strconv.ParseFloat(kva[i].Value, 32)
-				fmt.Fprintf(ofile, "<%v, %v>\n", kva[i].Key, fmt.Sprintf("%f", num/29))
+				s := strings.Fields(kva[i].Value)
+				num, _ := strconv.ParseFloat(s[0], 32)
+				count, _ := strconv.ParseFloat(s[1], 32)
+				fmt.Fprintf(ofile, "<%v, %v>\n", kva[i].Key, fmt.Sprintf("%f", num/count))
 			}
 		} else if id == 2 {
 			output := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + ".txt"

@@ -197,7 +197,7 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 		for _, w := range words {
 			number := strings.Fields(w)
 			if len(number) == 14 {
-				kv := KeyValue{number[1], "1"}
+				kv := KeyValue{number[1], number[0]}
 				kva = append(kva, kv)
 			}
 		}
@@ -234,7 +234,17 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 //
 func Reduce(key string, values []string, id int) string {
 	// return the number of occurrences of this word.
-	if id == 3 {
+	if id == 1 {
+		s := map[string]bool{}
+		count := 0
+		for i := 0; i < len(values); i++ {
+			if _, ok := s[values[i]]; !ok {
+				count++
+				s[values[i]] = true
+			}
+		}
+		return strconv.Itoa(len(values)) + " " + strconv.Itoa(count)
+	} else if id == 3 {
 		ret := make([]int, 8)
 		for i := 0; i < len(values); i++ {
 			time, _ := strconv.Atoi(strings.Split(strings.Fields(values[i])[0], ":")[0])
