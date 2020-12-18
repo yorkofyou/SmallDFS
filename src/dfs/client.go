@@ -151,7 +151,7 @@ func (client *Client) Run(num int) {
 		} else if id == 2 {
 			client.Work(id, option)
 		} else if id == 3 {
-			client.Work(id, option)
+			client.Work(id, 0)
 		}
 		c.String(http.StatusOK, "Client "+strconv.FormatInt(client.Id, 10)+" finish task "+strconv.Itoa(id))
 	})
@@ -159,10 +159,10 @@ func (client *Client) Run(num int) {
 	router.GET("/task", func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Query("id"))
 		option, _ := strconv.Atoi(c.Query("option"))
-		output := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + ".txt"
-		ofile, _ := os.Create(client.Node.Directory + "/" + output)
 		kva := ByKey{}
 		if id == 1 {
+			output := "task-" + strconv.Itoa(id) + ".txt"
+			ofile, _ := os.Create(client.Node.Directory + "/" + output)
 			for i := 1; i <= ClientNum; i++ {
 				filename := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-out-" + strconv.Itoa(i) + ".txt"
 				if int64(i) != client.Id {
@@ -181,6 +181,8 @@ func (client *Client) Run(num int) {
 				fmt.Fprintf(ofile, "<%v, %v>\n", kva[i].Key, fmt.Sprintf("%f", num/29))
 			}
 		} else if id == 2 {
+			output := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + ".txt"
+			ofile, _ := os.Create(client.Node.Directory + "/" + output)
 			sum := 0
 			for i := 1; i <= ClientNum; i++ {
 				filename := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-out-" + strconv.Itoa(i) + ".txt"
@@ -203,7 +205,38 @@ func (client *Client) Run(num int) {
 				fmt.Fprintf(ofile, "<%v, %v>\n", kva[i].Key, fmt.Sprintf("%f", num/float64(sum)))
 			}
 		} else if id == 3 {
-
+			output := "task-" + strconv.Itoa(id) + ".txt"
+			// os.Create(client.Node.Directory + "/" + output)
+			ofile, _ := os.Create(client.Node.Directory + "/" + output)
+			for i := 1; i <= ClientNum; i++ {
+				filename := "task-" + strconv.Itoa(id) + "-option-" + strconv.Itoa(option) + "-out-" + strconv.Itoa(i) + ".txt"
+				if int64(i) != client.Id {
+					client.GetFile(filename)
+				}
+				file, _ := os.Open(client.Node.Directory + "/" + filename)
+				var kv KeyValue
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					scanner.Text()
+					s := make([]string, 8)
+					fmt.Sscanf(scanner.Text(), "%v %v %v %v %v %v %v %v %v", &kv.Key, &s[0], &s[1], &s[2], &s[3], &s[4], &s[5], &s[6], &s[7])
+					kv.Value = strings.Join(s[:], " ")
+					kva = append(kva, kv)
+				}
+			}
+			for i := 0; i < len(kva); i++ {
+				duration := make([]float64, 8)
+				sum := float64(0)
+				for j, s := range strings.Fields(kva[i].Value) {
+					d, _ := strconv.ParseFloat(s, 32)
+					duration[j] = float64(d)
+					sum += duration[j]
+				}
+				for i := range duration {
+					duration[i] = duration[i] / sum
+				}
+				fmt.Fprintf(ofile, "<%v, %v, %v, %v, %v, %v, %v, %v, %v>\n", kva[i].Key, fmt.Sprintf("%f", duration[0]), fmt.Sprintf("%f", duration[1]), fmt.Sprintf("%f", duration[2]), fmt.Sprintf("%f", duration[3]), fmt.Sprintf("%f", duration[4]), fmt.Sprintf("%f", duration[5]), fmt.Sprintf("%f", duration[6]), fmt.Sprintf("%f", duration[7]))
+			}
 		}
 		c.String(http.StatusOK, "Client has merged")
 	})

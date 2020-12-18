@@ -456,32 +456,30 @@ func (master *Master) DoTask(Id int) {
 		}
 		fmt.Println("Clients finish task" + strconv.Itoa(Id))
 	} else if Id == 3 {
-		for i := 1; i <= 8; i++ {
-			master.MapAlready = false
-			master.ReduceAlready = false
-			for j := 0; j < ClientNum; j++ {
-				wg.Add(1)
-				url := master.Clients[j].Node.Location + "/work?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(i)
-				go sendRequest(url, &wg)
-			}
-			wg.Wait()
-			for i := 0; i < ClientNum; i++ {
-				master.MapFinished[i] = false
-				master.ReduceFinished[i] = false
-			}
-			url := master.Clients[0].Node.Location + "/task?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(i)
-			response, err := http.Get(url)
-			if err != nil {
-				fmt.Println("Master send request error", err.Error())
-			}
-			defer response.Body.Close()
-			content, err := ioutil.ReadAll(response.Body)
-			if err != nil {
-				fmt.Println("Client post error", err.Error())
-				return
-			}
-			fmt.Println("Response: ", string(content))
+		master.MapAlready = false
+		master.ReduceAlready = false
+		for i := 0; i < ClientNum; i++ {
+			wg.Add(1)
+			url := master.Clients[i].Node.Location + "/work?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(0)
+			go sendRequest(url, &wg)
 		}
+		wg.Wait()
+		for i := 0; i < ClientNum; i++ {
+			master.MapFinished[i] = false
+			master.ReduceFinished[i] = false
+		}
+		url := master.Clients[0].Node.Location + "/task?" + "id=" + strconv.Itoa(Id) + "&option=" + strconv.Itoa(0)
+		response, err := http.Get(url)
+		if err != nil {
+			fmt.Println("Master send request error", err.Error())
+		}
+		defer response.Body.Close()
+		content, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			fmt.Println("Client post error", err.Error())
+			return
+		}
+		fmt.Println("Response: ", string(content))
 		fmt.Println("Clients finish task" + strconv.Itoa(Id))
 	}
 }

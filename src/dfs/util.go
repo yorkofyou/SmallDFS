@@ -19,6 +19,11 @@ func readByBytes(filename string) []byte {
 	if err != nil {
 		fmt.Println("Open file error", err.Error())
 	}
+	// var data []byte
+	// scanner := bufio.NewScanner(file)
+	// for scanner.Scan() {
+	// 	data = append(data, scanner.Bytes()...)
+	// }
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		fmt.Println("Read file error", err.Error())
@@ -189,14 +194,8 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 		for _, w := range words {
 			number := strings.Fields(w)
 			if len(number) == 14 {
-				startHour, err := strconv.Atoi(strings.Split(number[9], ":")[0])
-				if err != nil {
-					continue
-				}
-				if startHour >= (option-1)*3 && startHour < option*3 {
-					kv := KeyValue{number[1], number[11]}
-					kva = append(kva, kv)
-				}
+				kv := KeyValue{number[1], number[9] + " " + number[11]}
+				kva = append(kva, kv)
 			}
 		}
 	}
@@ -211,12 +210,13 @@ func Map(filename string, contents string, id int, option int) []KeyValue {
 func Reduce(key string, values []string, id int) string {
 	// return the number of occurrences of this word.
 	if id == 3 {
-		sum := 0
+		ret := make([]int, 8)
 		for i := 0; i < len(values); i++ {
-			v, _ := strconv.Atoi(values[i])
-			sum += v
+			time, _ := strconv.Atoi(strings.Split(strings.Fields(values[i])[0], ":")[0])
+			duration, _ := strconv.Atoi(strings.Fields(values[i])[1])
+			ret[time/3] += duration
 		}
-		return strconv.Itoa(sum)
+		return strings.Trim(strings.Join(strings.Fields(fmt.Sprint(ret)), " "), "[]")
 	}
 	return strconv.Itoa(len(values))
 }
